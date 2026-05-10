@@ -1,0 +1,11 @@
+const router = require("express").Router({ mergeParams: true });
+const auth = require("../middleware/auth");
+const c = require("../controllers/itineraryController");
+router.get("/itinerary", auth, c.getItinerary);
+router.get("/stops", auth, c.getStops);
+router.post("/stops", auth, c.addStop);
+router.put("/stops/:stopId", auth, c.updateStop);
+router.delete("/stops/:stopId", auth, c.deleteStop);
+router.post("/stops/:stopId/activities", auth, c.addActivity);
+router.delete("/stops/:stopId/activities/:activityId", auth, c.deleteActivity);
+module.exports = router;

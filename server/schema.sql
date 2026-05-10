@@ -1,0 +1,81 @@
+CREATE DATABASE IF NOT EXISTS traveloop;
+USE traveloop;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  bio TEXT,
+  lang VARCHAR(50) DEFAULT 'English',
+  is_admin BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS trips (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  start_date DATE,
+  end_date DATE,
+  description TEXT,
+  cover VARCHAR(10) DEFAULT '🌍',
+  budget DECIMAL(10,2) DEFAULT 0,
+  status ENUM('Planning','Upcoming','Ongoing','Completed') DEFAULT 'Planning',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stops (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id INT NOT NULL,
+  city_name VARCHAR(100) NOT NULL,
+  full_name VARCHAR(200),
+  emoji VARCHAR(10) DEFAULT '🌍',
+  arrival_date DATE,
+  departure_date DATE,
+  position INT DEFAULT 0,
+  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activities (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  stop_id INT NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  type VARCHAR(50),
+  cost DECIMAL(10,2) DEFAULT 0,
+  duration VARCHAR(50),
+  time VARCHAR(20),
+  emoji VARCHAR(10) DEFAULT '🎯',
+  FOREIGN KEY (stop_id) REFERENCES stops(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id INT NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  icon VARCHAR(10),
+  category VARCHAR(50),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS packing_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id INT NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  category VARCHAR(100) DEFAULT 'Misc',
+  is_checked BOOLEAN DEFAULT FALSE,
+  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  trip_id INT NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  content TEXT,
+  stop VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);

@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const auth = require("../middleware/auth");
+const { getAllTrips, getTrip, createTrip, updateTrip, deleteTrip, getDashboard } = require("../controllers/tripController");
+router.get("/dashboard", auth, getDashboard);
+router.get("/", auth, getAllTrips);
+router.get("/:id", auth, getTrip);
+router.post("/", auth, createTrip);
+router.put("/:id", auth, updateTrip);
+router.delete("/:id", auth, deleteTrip);
+module.exports = router;
