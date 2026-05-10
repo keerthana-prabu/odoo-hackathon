@@ -10,6 +10,7 @@ export default function CitySearchPage({ setPage }) {
   const [filter, setFilter] = useState("All");
   const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -19,32 +20,28 @@ export default function CitySearchPage({ setPage }) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const searchCities = async (query) => {
-  if (!query || query.length < 2) { setCityResults([]); return; }
-  setCityLoading(true);
-  setCityError("");
-  try {
-    const res = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`
-    );
-    const data = await res.json();
-    const results = (data.results || []).map(r => ({
-      name: r.name,
-      cityName: r.name,
-      fullName: `${r.name}, ${r.admin1 || ""}, ${r.country}`,
-      href: null,
-      country: r.country,
-      population: r.population,
-      emoji: "🌍",
-      costIndex: "Medium",
-    }));
-    setCityResults(results);
-    setCities(results); // for CitySearchPage
-  } catch {
-    setCityError("Could not load cities. Check your internet.");
-  }
-  setCityLoading(false);
-};
+  const searchCities = async (q) => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`
+      );
+      const data = await res.json();
+      const results = (data.results || []).map(r => ({
+        name: r.name,
+        fullName: `${r.name}${r.admin1 ? ", " + r.admin1 : ""}, ${r.country}`,
+        country: r.country,
+        population: r.population,
+        emoji: "🌍",
+        costIndex: "Medium",
+      }));
+      setCities(results);
+    } catch {
+      setError("Could not load cities. Check your internet.");
+    }
+    setLoading(false);
+  };
 
   const filtered = filter === "All" ? cities : cities.filter(c => c.costIndex === filter);
 
@@ -53,9 +50,12 @@ export default function CitySearchPage({ setPage }) {
       <PageHeader title="City Search" subtitle="Discover and add cities to your itinerary" />
 
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        <input placeholder="🔍  Search cities or countries..." value={query}
+        <input
+          placeholder="🔍  Search cities or countries..."
+          value={query}
           onChange={e => setQuery(e.target.value)}
-          style={{ flex: 1, border: "1px solid #ddd", borderRadius: 10, padding: "11px 16px", fontSize: 14, outline: "none" }} />
+          style={{ flex: 1, border: "1px solid #ddd", borderRadius: 10, padding: "11px 16px", fontSize: 14, outline: "none" }}
+        />
         {["All", "Low", "Medium", "High"].map(f => (
           <button key={f} onClick={() => setFilter(f)} style={{
             padding: "8px 16px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, cursor: "pointer", fontWeight: 500,
@@ -64,12 +64,11 @@ export default function CitySearchPage({ setPage }) {
         ))}
       </div>
 
+      {error && <div style={{ textAlign: "center", padding: 20, color: "red" }}>{error}</div>}
       {loading && <div style={{ textAlign: "center", padding: 40, color: GRAY_MED }}>Searching cities...</div>}
-
-      {!loading && query.length > 1 && cities.length === 0 && (
+      {!loading && query.length > 1 && cities.length === 0 && !error && (
         <div style={{ textAlign: "center", padding: 40, color: GRAY_MED }}>No cities found for "{query}"</div>
       )}
-
       {!loading && query.length < 2 && (
         <div style={{ textAlign: "center", padding: 60 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🌍</div>
@@ -80,14 +79,15 @@ export default function CitySearchPage({ setPage }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
         {filtered.map((c, i) => (
           <Card key={i} style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ background: TEAL_LIGHT, height: 80, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>{c.emoji}</div>
+            <div style={{ background: TEAL_LIGHT, height: 80, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36 }}>
+              {c.emoji}
+            </div>
             <div style={{ padding: "14px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>{c.name}</div>
                 <Badge color={c.costIndex === "High" ? "red" : c.costIndex === "Low" ? "green" : "amber"}>{c.costIndex}</Badge>
               </div>
               <div style={{ fontSize: 12, color: GRAY_MED, marginBottom: 12 }}>{c.fullName}</div>
-              {/* TODO: show real activities once /api/cities/:name/activities is ready */}
               <Btn small style={{ width: "100%" }} onClick={() => setPage("itinerary-builder")}>+ Add to Trip</Btn>
             </div>
           </Card>

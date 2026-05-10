@@ -13,17 +13,18 @@ export default function PackingPage({ currentTrip }) {
   const [adding, setAdding] = useState(false);
   const [newItem, setNewItem] = useState({ name: "", category: "Misc" });
   const [loading, setLoading] = useState(true);
+  const [addError, setAddError] = useState("");
 
   useEffect(() => {
     const fetchPacking = async () => {
       setLoading(true);
       try {
-     const res = await fetch(`/api/trips/${currentTrip.id}/packing`, {
-  headers: { Authorization: "Bearer " + localStorage.getItem("token") },
-});
-const data = await res.json();
-setCategories(data.categories);
-setChecked(data.checked);
+        const res = await fetch(`/api/trips/${currentTrip.id}/packing`, {
+          headers: { Authorization: "Bearer " + localStorage.getItem("token") },
+        });
+        const data = await res.json();
+        setCategories(data.categories || {});
+        setChecked(data.checked || {});
       } catch (err) {
         console.error("Failed to load packing list", err);
       }
@@ -34,41 +35,83 @@ setChecked(data.checked);
   }, [currentTrip]);
 
   const toggle = async (key) => {
-  
-const next = { ...checked, [key]: !checked[key] };
-setChecked(next);
-const [category, ...rest] = key.split(/(?=[A-Z])/);
-await fetch(`/api/trips/${currentTrip.id}/packing/checked`, {
-  method: "PATCH",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: "Bearer " + localStorage.getItem("token"),
-  },
-  body: JSON.stringify({ name: rest.join(""), category, is_checked: next[key] }),
-});  };
+    const next = { ...checked, [key]: !checked[key] };
+    setChecked(next);
+    // Find category by matching against known category names
+    const category = Object.keys(categories).find(cat => key.startsWith(cat));
+    const name = key.slice(category?.length || 0);
+    await fetch(`/api/trips/${currentTrip.id}/packing/checked`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + localStorage.getItem("token"),
+      },
+      body: JSON.stringify({ name, category, is_checked: next[key] }),
+    });
+  };
 
   const addItem = async () => {
     if (!newItem.name.trim()) return;
-    const res = await fetch(`/api/trips/${currentTrip.id}/packing`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: "Bearer " + localStorage.getItem("token"),
-  },
-  body: JSON.stringify({ name: newItem.name, category: newItem.category }),
-});
-const saved = await res.json();
-const updated = { ...categories, [newItem.category]: [...(categories[newItem.category] || []), saved.name] };
-setCategories(updated);
-setNewItem({ name: "", category: "Misc" });
-setAdding(false); };
+    setAddError("");
+    try {
+      const res = await fetch(`/api/trips/${currentTrip.id}/packing`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + localStorage.getItem("token"),
+        },
+        body: JSON.stringify({ name: newItem.name, category: newItem.category }),
+      });
+      const saved = await res.json();
+      if (!res.ok) { setAddError(saved.message || "Failed to add item"); return; }
+      // Handle either { name } or { item: { name } } response shape
+      const itemName = saved.name || saved.item?.name || newItem.name;
+      const updated = {
+        ...categories,
+        [newItem.category]: [...(categories[newItem.category] || []), itemName],
+      };
+      setCategories(updated);
+      setNewItem({ name: "", category: "Misc" });
+      setAdding(false);
+    } catch (err) {
+      setAddError("Failed to add item. Try again.");
+      console.error(err);
+    }
+  };
 
   const totalItems = Object.values(categories).flat().length;
   const packedCount = Object.values(checked).filter(Boolean).length;
 
+  // The add form — rendered everywhere it's needed
+  const AddForm = adding ? (
+    <Card style={{ marginBottom: 16, border: `2px solid ${TEAL}` }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <input
+          placeholder="Item name..."
+          value={newItem.name}
+          onChange={e => setNewItem({ ...newItem, name: e.target.value })}
+          onKeyDown={e => e.key === "Enter" && addItem()}
+          style={{ flex: 1, border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none", minWidth: 120 }}
+        />
+        <select
+          value={newItem.category}
+          onChange={e => setNewItem({ ...newItem, category: e.target.value })}
+          style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }}
+        >
+          {Object.keys(CAT_ICONS).map(c => <option key={c}>{c}</option>)}
+        </select>
+        <Btn small onClick={addItem}>Add</Btn>
+        <Btn small variant="ghost" onClick={() => { setAdding(false); setAddError(""); }}>Cancel</Btn>
+      </div>
+      {addError && <div style={{ color: "red", fontSize: 12, marginTop: 8 }}>{addError}</div>}
+    </Card>
+  ) : null;
+
   return (
     <div>
-      <PageHeader title="Packing Checklist" subtitle={currentTrip?.name || "Select a trip"}
+      <PageHeader
+        title="Packing Checklist"
+        subtitle={currentTrip?.name || "Select a trip"}
         actions={
           <>
             <Btn variant="ghost" small onClick={() => setAdding(true)}>+ Add Item</Btn>
@@ -81,6 +124,7 @@ setAdding(false); };
         <div style={{ textAlign: "center", padding: 60, color: GRAY_MED }}>Loading packing list...</div>
       ) : totalItems === 0 ? (
         <div style={{ textAlign: "center", padding: 60 }}>
+          {AddForm}  {/* ← KEY FIX: show form even on empty state */}
           <div style={{ fontSize: 48, marginBottom: 12 }}>🎒</div>
           <p style={{ color: GRAY_MED, fontSize: 14 }}>No packing list yet. Add items to get started!</p>
           <Btn onClick={() => setAdding(true)} style={{ marginTop: 16 }}>+ Add First Item</Btn>
@@ -109,21 +153,7 @@ setAdding(false); };
             </div>
           </Card>
 
-          {adding && (
-            <Card style={{ marginBottom: 16, border: `2px solid ${TEAL}` }}>
-              <div style={{ display: "flex", gap: 10 }}>
-                <input placeholder="Item name..." value={newItem.name}
-                  onChange={e => setNewItem({ ...newItem, name: e.target.value })}
-                  style={{ flex: 1, border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }} />
-                <select value={newItem.category} onChange={e => setNewItem({ ...newItem, category: e.target.value })}
-                  style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }}>
-                  {Object.keys(CAT_ICONS).map(c => <option key={c}>{c}</option>)}
-                </select>
-                <Btn small onClick={addItem}>Add</Btn>
-                <Btn small variant="ghost" onClick={() => setAdding(false)}>Cancel</Btn>
-              </div>
-            </Card>
-          )}
+          {AddForm}  {/* ← shows here when list has items */}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {Object.entries(categories).map(([cat, items]) => (

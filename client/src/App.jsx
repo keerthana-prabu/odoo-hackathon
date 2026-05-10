@@ -17,19 +17,30 @@ import AdminPage from "./Pages/AdminPage";
 
 export default function App() {
   const [page, setPage] = useState("login");
-  const [currentTrip, setCurrentTrip] = useState(null);
+  const [currentTrip, setCurrentTrip] = useState(() => {
+    try {
+      const id = localStorage.getItem("currentTripId");
+      return id ? { id: JSON.parse(id) } : null;
+    } catch { return null; }
+  });
+
+  // Wrap setCurrentTrip to also persist to localStorage
+  const selectTrip = (trip) => {
+    setCurrentTrip(trip);
+    if (trip?.id) localStorage.setItem("currentTripId", JSON.stringify(trip.id));
+  };
 
   if (page === "login") return <LoginPage setPage={setPage} />;
 
   const pageMap = {
-    dashboard:           <DashboardPage setPage={setPage} setCurrentTrip={setCurrentTrip} />,
-    trips:               <TripsPage setPage={setPage} setCurrentTrip={setCurrentTrip} />,
+    dashboard:           <DashboardPage setPage={setPage} setCurrentTrip={selectTrip} />,
+    trips:               <TripsPage setPage={setPage} setCurrentTrip={selectTrip} />,
     "create-trip":       <CreateTripPage setPage={setPage} />,
     "itinerary-builder": <ItineraryBuilderPage setPage={setPage} currentTrip={currentTrip} />,
     "itinerary-view":    <ItineraryViewPage setPage={setPage} currentTrip={currentTrip} />,
     "city-search":       <CitySearchPage setPage={setPage} />,
     "activity-search":   <ActivitySearchPage setPage={setPage} />,
-    budget:              <BudgetPage setPage={setPage} currentTrip={currentTrip} />,
+    budget: <BudgetPage setPage={setPage} currentTrip={currentTrip} />,
     packing:             <PackingPage setPage={setPage} currentTrip={currentTrip} />,
     shared:              <SharedPage setPage={setPage} currentTrip={currentTrip} />,
     profile:             <ProfilePage setPage={setPage} />,
