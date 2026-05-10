@@ -88,7 +88,7 @@ export default function LoginPage({ setPage }) {
 
         <div style={{ display: "flex", gap: 10 }}>
           {["🌐 Google", "🍎 Apple"].map(p => (
-            <button key={p} onClick={() => setPage("dashboard")} style={{
+            <button key={p} onClick={() => setError("Social login not available yet")} style={{
               flex: 1, padding: "10px", border: "1px solid #ddd", borderRadius: 8,
               background: "#fff", fontSize: 13, cursor: "pointer", fontWeight: 500,
             }}>{p}</button>

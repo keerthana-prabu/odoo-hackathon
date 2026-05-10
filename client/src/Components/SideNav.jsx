@@ -44,10 +44,10 @@ export default function SideNav({ page, setPage }) {
       </nav>
       <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>AK</div>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: AMBER, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>❤️</div>
           <div>
-            <div style={{ color: "#fff", fontSize: 13, fontWeight: 500 }}>Arjun Kumar</div>
-            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>arjun@email.com</div>
+            <div style={{ color: "#fff", fontSize: 13, fontWeight: 500 }}>Best Trips!</div>
+            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 11 }}>Travel with us</div>
           </div>
         </div>
       </div>

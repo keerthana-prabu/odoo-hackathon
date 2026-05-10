@@ -8,7 +8,7 @@ const AMBER_LIGHT = "#FAEEDA";
 const GRAY_LIGHT = "#F1EFE8";
 const GRAY_MED = "#888780";
 
-export default function ItineraryBuilderPage({ setPage }) {
+export default function ItineraryBuilderPage({ setPage, currentTrip }) {
   const [stops, setStops] = useState([]);
   const [cityQuery, setCityQuery] = useState("");
   const [cityResults, setCityResults] = useState([]);
@@ -18,117 +18,78 @@ export default function ItineraryBuilderPage({ setPage }) {
   const [activities, setActivities] = useState({});
   const [activityLoading, setActivityLoading] = useState({});
   const [expandedStop, setExpandedStop] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  // Search cities using Teleport API - no API key needed!
+  const tripId = currentTrip?.id || JSON.parse(localStorage.getItem("currentTripId") || "null");
+
   const searchCities = async (query) => {
-    if (!query || query.length < 2) {
-      setCityResults([]);
-      return;
-    }
+    if (!query || query.length < 2) { setCityResults([]); return; }
     setCityLoading(true);
     setCityError("");
     try {
-      const res = await fetch(
-        `https://api.teleport.org/api/cities/?search=${encodeURIComponent(query)}&limit=8`
-      );
+      const res = await fetch(`https://api.teleport.org/api/cities/?search=${encodeURIComponent(query)}&limit=8`);
       const data = await res.json();
       const results = data._embedded?.["city:search-results"] || [];
-      const cities = results.map((r) => ({
+      setCityResults(results.map(r => ({
         name: r.matching_full_name,
         cityName: r.matching_full_name.split(",")[0].trim(),
         href: r._links["city:item"].href,
-      }));
-      setCityResults(cities);
-    } catch (err) {
+      })));
+    } catch {
       setCityError("Could not load cities. Check your internet.");
     }
     setCityLoading(false);
   };
 
-  // Fetch activities for a city using Teleport API
   const fetchActivities = async (cityHref, stopIndex) => {
-    setActivityLoading((prev) => ({ ...prev, [stopIndex]: true }));
+    setActivityLoading(prev => ({ ...prev, [stopIndex]: true }));
     try {
-      // Get city details first
       const cityRes = await fetch(cityHref);
       const cityData = await cityRes.json();
-      const urbanAreaHref = cityData._links?.["city:urban_area"]?.href;
-
-      if (!urbanAreaHref) {
-        // City has no urban area data, use fallback activities
-        setActivities((prev) => ({
-          ...prev,
-          [stopIndex]: getFallbackActivities(stops[stopIndex]?.cityName),
-        }));
-        setActivityLoading((prev) => ({ ...prev, [stopIndex]: false }));
-        return;
-      }
-
-      // Get scores/details from urban area
-      const urbanRes = await fetch(`${urbanAreaHref}scores/`);
-      const urbanData = await urbanRes.json();
-      const categories = urbanData.categories || [];
-
-      // Convert scores to activity suggestions
-      const activityList = categories
-        .filter((c) => c.score_out_of_10 > 5)
+      const urbanHref = cityData._links?.["city:urban_area"]?.href;
+      if (!urbanHref) throw new Error("No urban area");
+      const scoresRes = await fetch(`${urbanHref}scores/`);
+      const scoresData = await scoresRes.json();
+      const activityList = (scoresData.categories || [])
+        .filter(c => c.score_out_of_10 > 5)
         .slice(0, 6)
-        .map((c) => ({
-          name: c.name,
-          score: Math.round(c.score_out_of_10 * 10),
-          emoji: getCategoryEmoji(c.name),
-        }));
-
-      setActivities((prev) => ({ ...prev, [stopIndex]: activityList }));
-    } catch (err) {
-      setActivities((prev) => ({
-        ...prev,
-        [stopIndex]: getFallbackActivities(stops[stopIndex]?.cityName),
-      }));
+        .map(c => ({ name: c.name, score: Math.round(c.score_out_of_10 * 10), emoji: getCategoryEmoji(c.name) }));
+      setActivities(prev => ({ ...prev, [stopIndex]: activityList.length ? activityList : getFallbackActivities(stopIndex) }));
+    } catch {
+      setActivities(prev => ({ ...prev, [stopIndex]: getFallbackActivities(stopIndex) }));
     }
-    setActivityLoading((prev) => ({ ...prev, [stopIndex]: false }));
+    setActivityLoading(prev => ({ ...prev, [stopIndex]: false }));
   };
 
-  const getCategoryEmoji = (name) => {
-    const map = {
-      "Housing": "🏠", "Cost of Living": "💰", "Startups": "🚀",
-      "Venture Capital": "💼", "Travel Connectivity": "✈️",
-      "Commute": "🚇", "Business Freedom": "📊", "Safety": "🛡️",
-      "Healthcare": "🏥", "Education": "🎓", "Environmental Quality": "🌿",
-      "Economy": "📈", "Taxation": "🧾", "Internet Access": "📶",
-      "Leisure & Culture": "🎭", "Tolerance": "🤝", "Outdoors": "🏞️",
-    };
-    return map[name] || "⭐";
+  const getCategoryEmoji = (name) => ({
+    "Leisure & Culture": "🎭", "Outdoors": "🏞️", "Travel Connectivity": "✈️",
+    "Safety": "🛡️", "Healthcare": "🏥", "Education": "🎓",
+    "Environmental Quality": "🌿", "Economy": "📈", "Internet Access": "📶",
+    "Cost of Living": "💰", "Housing": "🏠", "Commute": "🚇",
+    "Business Freedom": "📊", "Tolerance": "🤝", "Startups": "🚀",
+  }[name] || "⭐");
+
+  const getFallbackActivities = (stopIndex) => {
+    const cityName = stops[stopIndex]?.cityName || "City";
+    return [
+      { name: `Explore ${cityName} Old Town`, emoji: "🏛️", score: 85 },
+      { name: `${cityName} Food Tour`, emoji: "🍽️", score: 80 },
+      { name: "Local Markets", emoji: "🛍️", score: 75 },
+      { name: "City Walking Tour", emoji: "🚶", score: 78 },
+      { name: "Museums & Galleries", emoji: "🎨", score: 82 },
+      { name: "Parks & Nature", emoji: "🌿", score: 70 },
+    ];
   };
 
-  const getFallbackActivities = (cityName) => [
-    { name: `Explore ${cityName} Old Town`, emoji: "🏛️", score: 85 },
-    { name: `${cityName} Food Tour`, emoji: "🍽️", score: 80 },
-    { name: `Local Markets`, emoji: "🛍️", score: 75 },
-    { name: `City Walking Tour`, emoji: "🚶", score: 78 },
-    { name: `Museums & Galleries`, emoji: "🎨", score: 82 },
-    { name: `Parks & Nature`, emoji: "🌿", score: 70 },
-  ];
-
-  // Debounce city search
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (cityQuery) searchCities(cityQuery);
-    }, 400);
+    const timer = setTimeout(() => { if (cityQuery) searchCities(cityQuery); }, 400);
     return () => clearTimeout(timer);
   }, [cityQuery]);
 
   const addStop = (city) => {
-    const newStop = {
-      cityName: city.cityName,
-      fullName: city.name,
-      href: city.href,
-      from: "",
-      to: "",
-      selectedActivities: [],
-    };
     const newIndex = stops.length;
-    setStops([...stops, newStop]);
+    setStops(prev => [...prev, { cityName: city.cityName, fullName: city.name, href: city.href, from: "", to: "", selectedActivities: [] }]);
     setShowCitySearch(false);
     setCityQuery("");
     setCityResults([]);
@@ -138,25 +99,18 @@ export default function ItineraryBuilderPage({ setPage }) {
 
   const removeStop = (index) => {
     setStops(stops.filter((_, i) => i !== index));
-    const newActivities = { ...activities };
-    delete newActivities[index];
-    setActivities(newActivities);
+    setActivities(prev => { const n = { ...prev }; delete n[index]; return n; });
   };
 
   const updateStop = (index, field, value) => {
-    setStops(stops.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+    setStops(stops.map((s, i) => i === index ? { ...s, [field]: value } : s));
   };
 
   const toggleActivity = (stopIndex, activity) => {
     setStops(stops.map((s, i) => {
       if (i !== stopIndex) return s;
-      const exists = s.selectedActivities.find((a) => a.name === activity.name);
-      return {
-        ...s,
-        selectedActivities: exists
-          ? s.selectedActivities.filter((a) => a.name !== activity.name)
-          : [...s.selectedActivities, activity],
-      };
+      const exists = s.selectedActivities.find(a => a.name === activity.name);
+      return { ...s, selectedActivities: exists ? s.selectedActivities.filter(a => a.name !== activity.name) : [...s.selectedActivities, activity] };
     }));
   };
 
@@ -166,35 +120,65 @@ export default function ItineraryBuilderPage({ setPage }) {
     return days > 0 ? days : null;
   };
 
+  const saveItinerary = async () => {
+    if (!tripId) { setSaveError("No trip found. Please create a trip first."); return; }
+    setSaving(true);
+    setSaveError("");
+    const token = localStorage.getItem("token");
+    try {
+      for (let i = 0; i < stops.length; i++) {
+        const stop = stops[i];
+        const stopRes = await fetch(`/api/trips/${tripId}/stops`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ city_name: stop.cityName, full_name: stop.fullName, emoji: "🌍", arrival_date: stop.from || null, departure_date: stop.to || null, position: i }),
+        });
+        if (!stopRes.ok) throw new Error("Failed to save stop: " + stop.cityName);
+        const savedStop = await stopRes.json();
+        for (const act of stop.selectedActivities) {
+          await fetch(`/api/trips/${tripId}/stops/${savedStop.id}/activities`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+            body: JSON.stringify({ name: act.name, type: "Experience", emoji: act.emoji }),
+          });
+        }
+      }
+      setPage("itinerary-view");
+    } catch (err) {
+      setSaveError(err.message || "Something went wrong while saving.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", margin: 0 }}>
-            Itinerary Builder
-          </h1>
-          <p style={{ color: GRAY_MED, fontSize: 14, margin: "4px 0 0" }}>
-            Add cities and activities to build your trip
-          </p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1a1a1a", margin: 0 }}>Itinerary Builder</h1>
+          <p style={{ color: GRAY_MED, fontSize: 14, margin: "4px 0 0" }}>Add cities and activities to build your trip</p>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <button
-            onClick={() => setShowCitySearch(true)}
-            style={{ background: TEAL_LIGHT, color: TEAL_DARK, border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-          >
+          <button onClick={() => setShowCitySearch(true)}
+            style={{ background: TEAL_LIGHT, color: TEAL_DARK, border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             + Add City
           </button>
           {stops.length > 0 && (
-            <button
-              onClick={() => setPage("itinerary-view")}
-              style={{ background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-            >
-              Preview Trip →
+            <button onClick={saveItinerary} disabled={saving}
+              style={{ background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 14, fontWeight: 500, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Saving..." : "Save & Preview →"}
             </button>
           )}
         </div>
       </div>
+
+      {/* Save Error */}
+      {saveError && (
+        <div style={{ background: "#FCEBEB", color: "#791F1F", borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 16 }}>
+          ⚠️ {saveError}
+        </div>
+      )}
 
       {/* City Search Modal */}
       {showCitySearch && (
@@ -202,33 +186,21 @@ export default function ItineraryBuilderPage({ setPage }) {
           <div style={{ background: "#fff", borderRadius: 16, padding: "1.5rem", width: 480, maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>Search a City</h3>
-              <button onClick={() => { setShowCitySearch(false); setCityQuery(""); setCityResults([]); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: GRAY_MED }}>×</button>
+              <button onClick={() => { setShowCitySearch(false); setCityQuery(""); setCityResults([]); }}
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: GRAY_MED }}>×</button>
             </div>
-            <input
-              autoFocus
-              placeholder="🔍  Type a city name..."
-              value={cityQuery}
-              onChange={(e) => setCityQuery(e.target.value)}
-              style={{ width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "11px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 12 }}
-            />
-            {cityLoading && (
-              <div style={{ textAlign: "center", padding: "16px", color: GRAY_MED, fontSize: 14 }}>
-                🔍 Searching cities...
-              </div>
-            )}
-            {cityError && (
-              <div style={{ color: "red", fontSize: 13, padding: "8px 0" }}>{cityError}</div>
-            )}
+            <input autoFocus placeholder="🔍  Type a city name..." value={cityQuery}
+              onChange={e => setCityQuery(e.target.value)}
+              style={{ width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "11px 14px", fontSize: 14, outline: "none", boxSizing: "border-box", marginBottom: 12 }} />
+            {cityLoading && <div style={{ textAlign: "center", padding: 16, color: GRAY_MED, fontSize: 14 }}>🔍 Searching cities...</div>}
+            {cityError && <div style={{ color: "red", fontSize: 13, padding: "8px 0" }}>{cityError}</div>}
             {cityResults.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 280, overflowY: "auto" }}>
                 {cityResults.map((city, i) => (
-                  <div
-                    key={i}
-                    onClick={() => addStop(city)}
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 8, cursor: "pointer", border: "1px solid #eee", transition: "background 0.15s" }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = TEAL_LIGHT}
-                    onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}
-                  >
+                  <div key={i} onClick={() => addStop(city)}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 8, cursor: "pointer", border: "1px solid #eee" }}
+                    onMouseEnter={e => e.currentTarget.style.background = TEAL_LIGHT}
+                    onMouseLeave={e => e.currentTarget.style.background = "#fff"}>
                     <span style={{ fontSize: 22 }}>🌍</span>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{city.cityName}</div>
@@ -240,9 +212,7 @@ export default function ItineraryBuilderPage({ setPage }) {
               </div>
             )}
             {cityQuery.length > 1 && !cityLoading && cityResults.length === 0 && !cityError && (
-              <div style={{ textAlign: "center", padding: "16px", color: GRAY_MED, fontSize: 14 }}>
-                No cities found for "{cityQuery}"
-              </div>
+              <div style={{ textAlign: "center", padding: 16, color: GRAY_MED, fontSize: 14 }}>No cities found for "{cityQuery}"</div>
             )}
           </div>
         </div>
@@ -254,33 +224,24 @@ export default function ItineraryBuilderPage({ setPage }) {
           <div style={{ fontSize: 48, marginBottom: 12 }}>🗺️</div>
           <h3 style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", margin: "0 0 8px" }}>No stops yet</h3>
           <p style={{ color: GRAY_MED, fontSize: 14, margin: "0 0 20px" }}>Click "Add City" to start building your itinerary</p>
-          <button
-            onClick={() => setShowCitySearch(true)}
-            style={{ background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "12px 24px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-          >
+          <button onClick={() => setShowCitySearch(true)}
+            style={{ background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "12px 24px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             + Add First City
           </button>
         </div>
       )}
 
-      {/* Stops List */}
+      {/* Stops */}
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {stops.map((stop, i) => (
-          <div key={i} style={{ background: "#fff", borderRadius: 12, border: `2px solid ${expandedStop === i ? TEAL : "#eee"}`, overflow: "hidden", transition: "border 0.15s" }}>
-            {/* Stop Header */}
-            <div
-              onClick={() => setExpandedStop(expandedStop === i ? null : i)}
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", cursor: "pointer" }}
-            >
-              <div style={{ width: 40, height: 40, background: TEAL_LIGHT, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
-                🌍
-              </div>
+          <div key={i} style={{ background: "#fff", borderRadius: 12, border: `2px solid ${expandedStop === i ? TEAL : "#eee"}`, overflow: "hidden" }}>
+            <div onClick={() => setExpandedStop(expandedStop === i ? null : i)}
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", cursor: "pointer" }}>
+              <div style={{ width: 40, height: 40, background: TEAL_LIGHT, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🌍</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>Stop {i + 1}: {stop.cityName}</div>
                 <div style={{ fontSize: 12, color: GRAY_MED }}>
-                  {stop.from && stop.to
-                    ? `${stop.from} → ${stop.to} · ${getDuration(stop.from, stop.to)} days`
-                    : "Set travel dates below"}
+                  {stop.from && stop.to ? `${stop.from} → ${stop.to} · ${getDuration(stop.from, stop.to)} days` : "Set travel dates below"}
                 </div>
               </div>
               {stop.selectedActivities.length > 0 && (
@@ -288,37 +249,25 @@ export default function ItineraryBuilderPage({ setPage }) {
                   {stop.selectedActivities.length} activities
                 </span>
               )}
-              <button
-                onClick={(e) => { e.stopPropagation(); removeStop(i); }}
-                style={{ background: "#FCEBEB", color: "#791F1F", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}
-              >
+              <button onClick={e => { e.stopPropagation(); removeStop(i); }}
+                style={{ background: "#FCEBEB", color: "#791F1F", border: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
                 Remove
               </button>
-              <span style={{ color: GRAY_MED, fontSize: 16 }}>{expandedStop === i ? "▲" : "▼"}</span>
+              <span style={{ color: GRAY_MED }}>{expandedStop === i ? "▲" : "▼"}</span>
             </div>
 
-            {/* Stop Details - Expanded */}
             {expandedStop === i && (
               <div style={{ padding: "0 20px 20px", borderTop: "1px solid #f0f0f0" }}>
-                {/* Dates */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, margin: "16px 0" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <label style={{ fontSize: 13, fontWeight: 500, color: "#444" }}>Arrival Date</label>
-                    <input
-                      type="date"
-                      value={stop.from}
-                      onChange={(e) => updateStop(i, "from", e.target.value)}
-                      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }}
-                    />
+                    <input type="date" value={stop.from} onChange={e => updateStop(i, "from", e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }} />
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <label style={{ fontSize: 13, fontWeight: 500, color: "#444" }}>Departure Date</label>
-                    <input
-                      type="date"
-                      value={stop.to}
-                      onChange={(e) => updateStop(i, "to", e.target.value)}
-                      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }}
-                    />
+                    <input type="date" value={stop.to} onChange={e => updateStop(i, "to", e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: 8, padding: "9px 12px", fontSize: 14, outline: "none" }} />
                   </div>
                 </div>
 
@@ -328,78 +277,58 @@ export default function ItineraryBuilderPage({ setPage }) {
                   </div>
                 )}
 
-                {/* Activities */}
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
-                    Suggested Activities
-                    {activityLoading[i] && <span style={{ fontWeight: 400, color: GRAY_MED, fontSize: 12, marginLeft: 8 }}>Loading...</span>}
-                  </div>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10 }}>
+                  Suggested Activities
+                  {activityLoading[i] && <span style={{ fontWeight: 400, color: GRAY_MED, fontSize: 12, marginLeft: 8 }}>Loading from API...</span>}
+                </div>
 
-                  {activityLoading[i] ? (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {[1,2,3,4].map(n => (
-                        <div key={n} style={{ height: 36, width: 120, background: GRAY_LIGHT, borderRadius: 8, animation: "pulse 1s infinite" }} />
+                {activityLoading[i] ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[1,2,3,4].map(n => <div key={n} style={{ height: 36, width: 130, background: GRAY_LIGHT, borderRadius: 20 }} />)}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {(activities[i] || []).map(act => {
+                      const selected = stop.selectedActivities.find(a => a.name === act.name);
+                      return (
+                        <button key={act.name} onClick={() => toggleActivity(i, act)}
+                          style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: 500, border: `2px solid ${selected ? TEAL : "#ddd"}`, background: selected ? TEAL_LIGHT : "#fff", color: selected ? TEAL_DARK : "#555" }}>
+                          <span>{act.emoji}</span>
+                          <span>{act.name}</span>
+                          {selected && <span style={{ color: TEAL }}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {stop.selectedActivities.length > 0 && (
+                  <div style={{ marginTop: 14, padding: "10px 14px", background: AMBER_LIGHT, borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#633806", marginBottom: 6 }}>Selected:</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {stop.selectedActivities.map(a => (
+                        <span key={a.name} style={{ background: AMBER, color: "#fff", fontSize: 12, padding: "3px 10px", borderRadius: 12, fontWeight: 500 }}>
+                          {a.emoji} {a.name}
+                        </span>
                       ))}
                     </div>
-                  ) : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {(activities[i] || []).map((act) => {
-                        const selected = stop.selectedActivities.find((a) => a.name === act.name);
-                        return (
-                          <button
-                            key={act.name}
-                            onClick={() => toggleActivity(i, act)}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 6,
-                              padding: "7px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", fontWeight: 500,
-                              border: `2px solid ${selected ? TEAL : "#ddd"}`,
-                              background: selected ? TEAL_LIGHT : "#fff",
-                              color: selected ? TEAL_DARK : "#555",
-                              transition: "all 0.15s",
-                            }}
-                          >
-                            <span>{act.emoji}</span>
-                            <span>{act.name}</span>
-                            {selected && <span style={{ color: TEAL }}>✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {stop.selectedActivities.length > 0 && (
-                    <div style={{ marginTop: 14, padding: "10px 14px", background: AMBER_LIGHT, borderRadius: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#633806", marginBottom: 6 }}>Selected Activities:</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {stop.selectedActivities.map((a) => (
-                          <span key={a.name} style={{ background: AMBER, color: "#fff", fontSize: 12, padding: "3px 10px", borderRadius: 12, fontWeight: 500 }}>
-                            {a.emoji} {a.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         ))}
       </div>
 
-      {/* Bottom Save Button */}
       {stops.length > 0 && (
         <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
-          <button
-            onClick={() => setShowCitySearch(true)}
-            style={{ background: TEAL_LIGHT, color: TEAL_DARK, border: "none", borderRadius: 8, padding: "11px 20px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}
-          >
+          <button onClick={() => setShowCitySearch(true)}
+            style={{ background: TEAL_LIGHT, color: TEAL_DARK, border: "none", borderRadius: 8, padding: "11px 20px", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>
             + Add Another City
           </button>
-          <button
-            onClick={() => setPage("itinerary-view")}
-            style={{ flex: 1, background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "11px 20px", fontSize: 15, fontWeight: 600, cursor: "pointer" }}
-          >
-            Save & Preview Itinerary →
+          <button onClick={saveItinerary} disabled={saving}
+            style={{ flex: 1, background: TEAL, color: "#fff", border: "none", borderRadius: 8, padding: "11px 20px", fontSize: 15, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "Saving..." : "Save & Preview Itinerary →"}
           </button>
         </div>
       )}
