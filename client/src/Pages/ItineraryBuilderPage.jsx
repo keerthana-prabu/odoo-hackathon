@@ -23,45 +23,52 @@ export default function ItineraryBuilderPage({ setPage, currentTrip }) {
 
   const tripId = currentTrip?.id || JSON.parse(localStorage.getItem("currentTripId") || "null");
 
-  const searchCities = async (query) => {
-    if (!query || query.length < 2) { setCityResults([]); return; }
-    setCityLoading(true);
-    setCityError("");
-    try {
-      const res = await fetch(`https://api.teleport.org/api/cities/?search=${encodeURIComponent(query)}&limit=8`);
-      const data = await res.json();
-      const results = data._embedded?.["city:search-results"] || [];
-      setCityResults(results.map(r => ({
-        name: r.matching_full_name,
-        cityName: r.matching_full_name.split(",")[0].trim(),
-        href: r._links["city:item"].href,
-      })));
-    } catch {
-      setCityError("Could not load cities. Check your internet.");
-    }
-    setCityLoading(false);
-  };
+ const searchCities = async (query) => {
+  if (!query || query.length < 2) { setCityResults([]); return; }
+  setCityLoading(true);
+  setCityError("");
+  try {
+    const res = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`
+    );
+    const data = await res.json();
+    const results = (data.results || []).map(r => ({
+      name: r.name,
+      cityName: r.name,
+      fullName: `${r.name}, ${r.admin1 || ""}, ${r.country}`,
+      href: null,
+      country: r.country,
+      population: r.population,
+      emoji: "🌍",
+      costIndex: "Medium",
+    }));
+    setCityResults(results);
+    setCities(results); // for CitySearchPage
+  } catch {
+    setCityError("Could not load cities. Check your internet.");
+  }
+  setCityLoading(false);
+};
 
-  const fetchActivities = async (cityHref, stopIndex) => {
-    setActivityLoading(prev => ({ ...prev, [stopIndex]: true }));
-    try {
-      const cityRes = await fetch(cityHref);
-      const cityData = await cityRes.json();
-      const urbanHref = cityData._links?.["city:urban_area"]?.href;
-      if (!urbanHref) throw new Error("No urban area");
-      const scoresRes = await fetch(`${urbanHref}scores/`);
-      const scoresData = await scoresRes.json();
-      const activityList = (scoresData.categories || [])
-        .filter(c => c.score_out_of_10 > 5)
-        .slice(0, 6)
-        .map(c => ({ name: c.name, score: Math.round(c.score_out_of_10 * 10), emoji: getCategoryEmoji(c.name) }));
-      setActivities(prev => ({ ...prev, [stopIndex]: activityList.length ? activityList : getFallbackActivities(stopIndex) }));
-    } catch {
-      setActivities(prev => ({ ...prev, [stopIndex]: getFallbackActivities(stopIndex) }));
-    }
-    setActivityLoading(prev => ({ ...prev, [stopIndex]: false }));
-  };
-
+  const fetchActivities = async (city, stopIndex) => {
+  setActivityLoading(prev => ({ ...prev, [stopIndex]: true }));
+  // Using fixed activity categories - works without any API
+  const cityName = city.cityName || city.name;
+  setActivities(prev => ({
+    ...prev,
+    [stopIndex]: [
+      { name: `${cityName} City Tour`, emoji: "🏛️", score: 85 },
+      { name: `${cityName} Food Experience`, emoji: "🍽️", score: 80 },
+      { name: "Local Markets", emoji: "🛍️", score: 75 },
+      { name: "City Walking Tour", emoji: "🚶", score: 78 },
+      { name: "Museums & Galleries", emoji: "🎨", score: 82 },
+      { name: "Parks & Nature", emoji: "🌿", score: 70 },
+      { name: "Photography Spots", emoji: "📸", score: 76 },
+      { name: "Local Cuisine", emoji: "🥘", score: 88 },
+    ]
+  }));
+  setActivityLoading(prev => ({ ...prev, [stopIndex]: false }));
+};
   const getCategoryEmoji = (name) => ({
     "Leisure & Culture": "🎭", "Outdoors": "🏞️", "Travel Connectivity": "✈️",
     "Safety": "🛡️", "Healthcare": "🏥", "Education": "🎓",
@@ -88,15 +95,20 @@ export default function ItineraryBuilderPage({ setPage, currentTrip }) {
   }, [cityQuery]);
 
   const addStop = (city) => {
-    const newIndex = stops.length;
-    setStops(prev => [...prev, { cityName: city.cityName, fullName: city.name, href: city.href, from: "", to: "", selectedActivities: [] }]);
-    setShowCitySearch(false);
-    setCityQuery("");
-    setCityResults([]);
-    setExpandedStop(newIndex);
-    fetchActivities(city.href, newIndex);
-  };
-
+  const newIndex = stops.length;
+  setStops(prev => [...prev, {
+    cityName: city.cityName || city.name,
+    fullName: city.fullName || city.name,
+    href: city.href || null,
+    from: "", to: "",
+    selectedActivities: [],
+  }]);
+  setShowCitySearch(false);
+  setCityQuery("");
+  setCityResults([]);
+  setExpandedStop(newIndex);
+  fetchActivities(city, newIndex); // pass whole city object
+};
   const removeStop = (index) => {
     setStops(stops.filter((_, i) => i !== index));
     setActivities(prev => { const n = { ...prev }; delete n[index]; return n; });

@@ -19,26 +19,32 @@ export default function CitySearchPage({ setPage }) {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const searchCities = async (q) => {
-    setLoading(true);
-    try {
-      // Using Teleport API — no key needed
-      const res = await fetch(`https://api.teleport.org/api/cities/?search=${encodeURIComponent(q)}&limit=12`);
-      const data = await res.json();
-      const results = (data._embedded?.["city:search-results"] || []).map(r => ({
-        name: r.matching_full_name.split(",")[0].trim(),
-        fullName: r.matching_full_name,
-        href: r._links["city:item"].href,
-        // TODO: cost index will come from your backend /api/cities/:name/cost
-        costIndex: "Medium",
-        emoji: "🌍",
-      }));
-      setCities(results);
-    } catch (err) {
-      console.error("City search failed", err);
-    }
-    setLoading(false);
-  };
+  const searchCities = async (query) => {
+  if (!query || query.length < 2) { setCityResults([]); return; }
+  setCityLoading(true);
+  setCityError("");
+  try {
+    const res = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=en&format=json`
+    );
+    const data = await res.json();
+    const results = (data.results || []).map(r => ({
+      name: r.name,
+      cityName: r.name,
+      fullName: `${r.name}, ${r.admin1 || ""}, ${r.country}`,
+      href: null,
+      country: r.country,
+      population: r.population,
+      emoji: "🌍",
+      costIndex: "Medium",
+    }));
+    setCityResults(results);
+    setCities(results); // for CitySearchPage
+  } catch {
+    setCityError("Could not load cities. Check your internet.");
+  }
+  setCityLoading(false);
+};
 
   const filtered = filter === "All" ? cities : cities.filter(c => c.costIndex === filter);
 
